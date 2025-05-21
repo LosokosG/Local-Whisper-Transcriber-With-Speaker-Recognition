@@ -7,7 +7,6 @@
 
 *.mp3
 *.m4a
-*.txt
 
 # User-specific stuff
 .idea/**/workspace.xml
