@@ -38,30 +38,30 @@ recording (mp4, mkv, wav, m4a, ...)
 
 ## Design decisions
 
-- **Resumable manifest with hashes.** Each stage records what it produced and
+- Resumable manifest with hashes. Each stage records what it produced and
   what it consumed. If a file changes underneath (a re-run transcription, a
   hand-edited evidence file), the stages that depend on it are invalidated
   instead of silently mixing old and new data. Expensive steps never re-run
   just because a later step failed.
-- **The agent proposes, the validator disposes.** Evidence is checked against
+- The agent proposes, the validator disposes. Evidence is checked against
   the run's own sources, not just a schema: cited segments and frames must
   exist, quotes must occur in the cited segment's original ASR text,
   `asked_by`/`answered_by` must match the diarized speaker, no answer may end
   before its question was asked, every answer and claim needs a verbatim
   quote, and every number in a claim or summary must appear in a cited quote.
-- **No guessed names.** A speaker is published by name only when a definitive
+- No guessed names. A speaker is published by name only when a definitive
   binding can be re-derived: a self-introduction quote containing the name, an
   introduction by another speaker followed directly by that person's turn, a
   frame observation of the exact name next to an active-speaker highlight
   that lines up with their turn, or a confirmation a human recorded through
   the CLI. Everyone else is `Unidentified Speaker N`.
-- **Blockers instead of guesses.** Ambiguous dates, contradictory speaker
+- Blockers instead of guesses. Ambiguous dates, contradictory speaker
   evidence, and failed checks stop the run with exit code 3 and a list in
   `review.md`. Nothing is marked ready by hand.
-- **Canonical transcript stays untouched.** Corrections and redactions of
+- Canonical transcript stays untouched. Corrections and redactions of
   individual segments are an overlay (`transcript_edits.json`) bound to the
   transcript's hash.
-- **Local processing, credentials kept out of files.** Audio and text are
+- Local processing, credentials kept out of files. Audio and text are
   processed on your machine and the pipeline itself makes no network calls
   (the speech libraries download their models on first use). The Hugging Face
   token is read from `HF_TOKEN` when the diarization model is loaded (and by
@@ -69,10 +69,10 @@ recording (mp4, mkv, wav, m4a, ...)
   accepted as an argument or written down. Error messages are redacted before
   they reach the manifest, unexpected CLI errors print only the exception
   type, and validation scans the whole run directory for credential patterns.
-- **Light core.** Everything except the speech models runs, and is tested,
+- Light core. Everything except the speech models runs, and is tested,
   without a GPU: WhisperX, torch and pyannote are an optional extra.
 
-## Honest limits
+## Limits
 
 - Real transcription needs the `ml` extra and, in practice, an NVIDIA GPU. CPU
   works but is slow.
@@ -88,7 +88,7 @@ recording (mp4, mkv, wav, m4a, ...)
   the image shows.
 - Quote matching ignores case, punctuation and spacing, but not wording.
 - Linux/macOS only (the manifest uses POSIX file locks).
-- Used on the author's own recordings only; there are no accuracy numbers. The
+- I have only used it on recordings I processed myself; there are no accuracy numbers. The
   automated tests use synthetic fixtures and fakes for WhisperX and pyannote.
 
 ## Running it
@@ -137,9 +137,9 @@ uv run pytest
 
 ## Origin
 
-Started in May 2025 as a small Whisper script; rebuilt in 2026 (WhisperX,
-diarization, evidence validation) as part of a private event-processing
-pipeline. This repository contains the generic parts; client-specific stages
+Started in May 2025 as a small desktop script (Whisper plus pyannote
+diarization). In 2026 I rebuilt it around WhisperX, a resumable manifest and
+evidence validation, as part of a private event-processing pipeline. This repository contains the generic parts; client-specific stages
 were removed. The original 2025 desktop script is still in the git history.
 
 ## License
