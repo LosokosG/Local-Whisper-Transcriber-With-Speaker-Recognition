@@ -45,13 +45,15 @@ recording (mp4, mkv, wav, m4a, ...)
   just because a later step failed.
 - **The agent proposes, the validator disposes.** Evidence is checked against
   the run's own sources, not just a schema: cited segments and frames must
-  exist, quotes must occur in the cited segment, `asked_by`/`answered_by` must
-  match the diarized speaker, an answer cannot end before its question was
-  asked, and every name/date/number/commitment claim needs a verbatim quote.
+  exist, quotes must occur in the cited segment's original ASR text,
+  `asked_by`/`answered_by` must match the diarized speaker, no answer may end
+  before its question was asked, every answer and claim needs a verbatim
+  quote, and every number in a claim or summary must appear in a cited quote.
 - **No guessed names.** A speaker is published by name only when a definitive
   binding can be re-derived: a self-introduction quote containing the name, an
-  introduction followed by that person's turn, an aligned "speaking" frame
-  observation of the exact name, or a confirmation a human recorded through
+  introduction by another speaker followed directly by that person's turn, a
+  frame observation of the exact name next to an active-speaker highlight
+  that lines up with their turn, or a confirmation a human recorded through
   the CLI. Everyone else is `Unidentified Speaker N`.
 - **Blockers instead of guesses.** Ambiguous dates, contradictory speaker
   evidence, and failed checks stop the run with exit code 3 and a list in
@@ -79,7 +81,11 @@ recording (mp4, mkv, wav, m4a, ...)
 - Frame sampling needs a video stream; OCR needs `tesseract` on the PATH.
 - The validator checks grounding, not quality. It proves a quote exists and
   belongs to the right speaker; it cannot tell whether the agent missed a
-  question or wrote a weak summary.
+  question, or whether a summary's wording means the same as its quotes
+  (only the numbers are cross-checked).
+- Frame observations are recorded by whoever looked at the frames. The
+  validator checks that the frame exists and the timing lines up, not what
+  the image shows.
 - Quote matching ignores case, punctuation and spacing, but not wording.
 - Linux/macOS only (the manifest uses POSIX file locks).
 - Used on the author's own recordings only; there are no accuracy numbers. The
@@ -97,7 +103,8 @@ uv run transcript-pipeline status --run outputs/2026-03-14_team-sync
 ```
 
 `prepare` prints the run directory (dated from the file's creation metadata
-when it has any). Then, for the optional stages:
+when it has any). Then, for the optional stages (`infer-event --no-date`
+closes the date stage if no date can be established):
 
 ```bash
 uv run transcript-pipeline infer-event --run outputs/2026-03-14_team-sync --event-start 2026-03-14T10:30:00+01:00

@@ -78,7 +78,6 @@
             {"type": "null"}
           ]
         },
-        "role": {"type": "string", "minLength": 1, "maxLength": 200},
         "confidence": {"enum": ["high", "medium", "low"]},
         "binding_evidence": {
           "type": "array",

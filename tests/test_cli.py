@@ -737,3 +737,69 @@ def test_render_recovers_a_blocked_review_once_evidence_is_valid_again(
 
     assert code == 0, payload
     assert _stage(run_dir, "review") == "completed"
+
+
+def test_rerunning_event_inference_clears_the_old_date_and_blocks_ready(
+    tmp_path: Path, evidence_files: Any
+) -> None:
+    run_dir, _stages = _ready_run(tmp_path, evidence_files)
+    assert run_cli(["infer-event", "--run", str(run_dir), "--event-start", "2026-03-14T10:30:00+01:00"])[0] == 0
+    assert run_cli(["render", "--run", str(run_dir)])[0] == 0
+    assert "March 14, 2026" in (run_dir / "transcript.md").read_text(encoding="utf-8")
+
+    assert run_cli(["infer-event", "--run", str(run_dir), "--force-stage"])[0] == 3
+    assert _manifest(run_dir)["inferred_event"] == {}
+    assert _status(run_dir)["next_action"] == "render"
+
+    code, _payload, _ = run_cli(["render", "--run", str(run_dir)])
+    assert code == 3
+    assert "**Date:** Not established" in (run_dir / "transcript.md").read_text(encoding="utf-8")
+    assert (run_dir / "review.md").read_text(encoding="utf-8").splitlines()[1].startswith("**Status:** NOT READY")
+
+
+def test_no_date_closes_an_ambiguous_event_stage(tmp_path: Path, evidence_files: Any) -> None:
+    stages = FakeStages()
+    run_dir = prepare_run(tmp_path, stages)
+    assert run_cli(["infer-event", "--run", str(run_dir)])[0] == 3
+
+    # An open event blocker does not invalidate evidence...
+    assert _ingest(run_dir, evidence_files)[0] == 0
+    # ...but it does keep the outputs from being ready.
+    assert run_cli(["render", "--run", str(run_dir)])[0] == 3
+
+    assert run_cli(["infer-event", "--run", str(run_dir), "--no-date"])[0] == 0
+    code, payload, _ = run_cli(["resume", "--run", str(run_dir)], stages.adapters())
+    assert code == 0, payload
+    assert _status(run_dir)["next_action"] == "complete"
+    assert _manifest(run_dir)["manual_decisions"][-1]["decision"] == "recording date left unestablished"
+
+
+def test_failed_bundle_does_not_record_a_speaker_confirmation(tmp_path: Path, evidence_files: Any) -> None:
+    run_dir = prepare_run(tmp_path, FakeStages())
+    qa = load_fixture("qa-evidence.json")
+    qa["topics"][0]["questions"][0]["claims"][0]["sources"][0]["quote"] = "not in the transcript"
+
+    code, _payload = _ingest(run_dir, evidence_files, None, qa, "--confirm-speaker", "SPEAKER_01", "Bo Sample")
+
+    assert code == 5
+    assert _manifest(run_dir)["manual_decisions"] == []
+
+
+def test_confirmation_after_ready_rerenders_the_review(tmp_path: Path, evidence_files: Any) -> None:
+    run_dir, _stages = _ready_run(tmp_path, evidence_files)
+    assert run_cli(["render", "--run", str(run_dir)])[0] == 0
+    speaker = load_fixture("speaker-evidence.json")
+    speaker["speakers"][2].update(
+        status="identified",
+        confidence="high",
+        display_name="Cy Example",
+        output_label="Cy Example",
+        binding_evidence=[{"type": "operator_confirmation", "sources": [{"segment_id": "seg-000007"}]}],
+    )
+
+    code, _payload = _ingest(run_dir, evidence_files, speaker, None, "--confirm-speaker", "SPEAKER_02", "Cy Example")
+    assert code == 0
+    assert _status(run_dir)["next_action"] == "render"
+    assert run_cli(["render", "--run", str(run_dir)])[0] == 0
+    review = (run_dir / "review.md").read_text(encoding="utf-8")
+    assert "## Operator decisions" in review and "Cy Example" in review

@@ -226,6 +226,7 @@ def _render_input_hashes(run_dir: Path, manifest: Any) -> dict[str, str] | None:
     data = manifest.data
     result["inferred_event"] = _stable_value_hash(data.get("inferred_event", {}))
     result["effective_config"] = _stable_value_hash(data.get("effective_config", {}))
+    result["manual_decisions"] = _stable_value_hash(data.get("manual_decisions", []))
     return result
 
 
@@ -519,11 +520,25 @@ def _infer_event(
     *,
     evidence_path: Path | None = None,
     event_start: str | None = None,
+    no_date: bool = False,
     force: bool = False,
 ) -> bool:
     from .event_time import resolve_event_time, validate_event_evidence
 
     manifest = _manifest(run_dir)
+    if no_date:
+        if evidence_path is not None or event_start is not None:
+            raise _UsageProblem("--no-date cannot be combined with event evidence")
+        manifest.record_manual_decision(
+            "event-no-date",
+            "recording date left unestablished",
+            details={"reason": "operator chose not to establish a date"},
+        )
+        status = manifest.stage("event")["status"]
+        manifest.start("event", force=status in {"blocked", "completed"})
+        manifest.replace_inferred_event({})
+        manifest.complete("event", validation={"event_resolution": {"status": "skipped"}})
+        return True
     if not manifest.should_run("event", force=force):
         return manifest.stage("event")["status"] == "completed"
     data = manifest.data
@@ -561,6 +576,8 @@ def _infer_event(
             )
         )
     manifest.start("event", force=force)
+    # A re-run invalidates the previous date until it resolves again.
+    manifest.replace_inferred_event({})
     if not signals:
         _block(manifest, "event", "event_evidence_missing", "event time needs evidence or --event-start")
         return False
@@ -582,7 +599,7 @@ def _infer_event(
     if resolution.get("status") != "resolved":
         _block(manifest, "event", "ambiguous_event_time", "event time evidence is ambiguous")
         return False
-    manifest.update_metadata(inferred_event=resolution)
+    manifest.replace_inferred_event(resolution)
     manifest.complete(
         "event",
         artifacts={
@@ -804,7 +821,12 @@ def _evidence_current(run_dir: Path, manifest: Any) -> bool:
     return current_sources is not None and isinstance(recorded, Mapping) and dict(recorded) == current_sources
 
 
-def _ingest_known_evidence(run_dir: Path, args: argparse.Namespace, manifest: Any) -> None:
+def _ingest_known_evidence(
+    run_dir: Path,
+    args: argparse.Namespace,
+    manifest: Any,
+    new_confirmations: Mapping[str, str] | None = None,
+) -> None:
     """Validate the complete candidate bundle before replacing any managed file."""
 
     work = run_dir / ".work"
@@ -834,7 +856,7 @@ def _ingest_known_evidence(run_dir: Path, args: argparse.Namespace, manifest: An
             raise ValueError(f"{argument} target is unsafe")
         supplied[argument] = document
         targets[argument] = target
-    if not supplied:
+    if not supplied and not new_confirmations:
         return
 
     candidate: dict[str, Mapping[str, Any]] = {}
@@ -869,7 +891,7 @@ def _ingest_known_evidence(run_dir: Path, args: argparse.Namespace, manifest: An
 
     lanes_supplied = any(name in supplied for name in _EVIDENCE_LANES)
     lanes_present = all(name in candidate for name in _EVIDENCE_LANES)
-    if lanes_supplied or (edits is not None and lanes_present):
+    if lanes_supplied or new_confirmations or (edits is not None and lanes_present):
         if not lanes_present:
             raise _EvidenceIngestValidationError(
                 "both speaker and Q&A evidence are required"
@@ -883,7 +905,7 @@ def _ingest_known_evidence(run_dir: Path, args: argparse.Namespace, manifest: An
             diarized,
             sources.get("visual"),
             raise_on_error=False,
-            confirmed_names=confirmed_speaker_names(manifest.data),
+            confirmed_names={**confirmed_speaker_names(manifest.data), **(new_confirmations or {})},
         )
         if not isinstance(result, Mapping):
             raise _EvidenceIngestValidationError(
@@ -1114,23 +1136,27 @@ def _validate_stage(
             manifest.block("evidence", code="reviewed_evidence_stale", message=message)
         return _ingest_validation_report(phase, message, code="reviewed_evidence_stale")
 
-    confirmations = getattr(args, "confirm_speaker", None) if args is not None else None
-    for label, name in confirmations or ():
-        from .validate import SPEAKER_CONFIRMATION
+    from .validate import SPEAKER_CONFIRMATION
 
+    confirmations = getattr(args, "confirm_speaker", None) if args is not None else None
+    new_names: dict[str, str] = {}
+    for label, name in confirmations or ():
         if re.fullmatch(r"SPEAKER_[A-Za-z0-9_-]+", label) is None or not name.strip() or len(name) > 200:
             raise _UsageProblem("--confirm-speaker needs a SPEAKER_xx label and a non-empty name")
-        manifest.record_manual_decision(
-            f"speaker-{label}-{_stable_value_hash([label, name.strip()])[:12]}",
-            SPEAKER_CONFIRMATION,
-            details={"speaker_label": label, "display_name": name.strip()},
-        )
+        new_names[label] = name.strip()
 
     try:
         if args is not None:
-            _ingest_known_evidence(run_dir, args, manifest)
+            _ingest_known_evidence(run_dir, args, manifest, new_names)
     except _EvidenceIngestValidationError as exc:
         return _ingest_validation_report(phase, str(exc))
+    # Confirmations are recorded only once the bundle that uses them passed.
+    for label, name in new_names.items():
+        manifest.record_manual_decision(
+            f"speaker-{label}-{_stable_value_hash([label, name])[:12]}",
+            SPEAKER_CONFIRMATION,
+            details={"speaker_label": label, "display_name": name},
+        )
 
     explicit_update = bool(confirmations) or (
         args is not None
@@ -1287,6 +1313,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_run(infer_event)
     infer_event.add_argument("--evidence", type=Path, help="event-time evidence JSON")
     infer_event.add_argument("--event-start", help="authoritative timezone-aware ISO-8601 start")
+    infer_event.add_argument(
+        "--no-date",
+        action="store_true",
+        help="record that the date stays unknown and close the event stage",
+    )
 
     frames = subparsers.add_parser("extract-frames", help="sample video frames and OCR them (optional)")
     _add_run(frames)
@@ -1366,6 +1397,7 @@ def main(
                 run_dir,
                 evidence_path=args.evidence,
                 event_start=args.event_start,
+                no_date=args.no_date,
                 force=args.force_stage,
             )
         elif args.command == "extract-frames":

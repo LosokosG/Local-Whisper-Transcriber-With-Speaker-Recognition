@@ -6,7 +6,6 @@
       "status": "identified",
       "output_label": "Ada Example",
       "display_name": "Ada Example",
-      "role": "Host",
       "confidence": "high",
       "binding_evidence": [
         {

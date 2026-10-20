@@ -257,3 +257,16 @@ def test_filename_constants_are_exact() -> None:
         "qa.md",
         "review.md",
     )
+
+
+def test_review_lists_every_transcript_edit() -> None:
+    from transcript_pipeline.render import render_review
+
+    data = bundle()
+    data["diarized"]["segments"][3]["finalized_text"] = "For a 10 GB archive it takes about 40 minutes."
+
+    review = render_review(data)
+
+    assert "## Transcript edits" in review
+    assert "| seg-000004 | For a ten gigabyte archive" in review
+    assert "For a 10 GB archive it takes about 40 minutes. |" in review

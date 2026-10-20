@@ -217,28 +217,17 @@ def render_transcript(bundle: Mapping[str, Any]) -> str:
     data = _mapping(bundle, "bundle")
     segments = _labelled_segments(data)
     duration = _number(data.get("duration_seconds"), "duration_seconds")
-    speakers = _speaker_records(data)
     participants: list[str] = []
-    roles: dict[str, str] = {}
     for segment in segments:
-        label = segment["output_label"]
-        if label not in participants:
-            participants.append(label)
-            record = speakers.get(segment["speaker_label"] or "")
-            role = record.get("role") if record is not None else None
-            if record is not None and record.get("status") == "identified" and isinstance(role, str):
-                roles[label] = role
+        if segment["output_label"] not in participants:
+            participants.append(segment["output_label"])
 
     lines = [
         f"# Transcript: {_title(data)}",
         f"**Date:** {_event_date(data, weekday=True)}",
         f"**Duration:** {_hms(duration)}",
         "**Speakers:**",
-        *(
-            f"- {_markdown_inline(name, 'speaker')}"
-            + (f" ({_markdown_inline(roles[name], 'role')})" if name in roles else "")
-            for name in participants
-        ),
+        *(f"- {_markdown_inline(name, 'speaker')}" for name in participants),
         "",
         "---",
     ]
@@ -552,6 +541,20 @@ def render_review(bundle: Mapping[str, Any]) -> str:
             )
             + " |"
         )
+
+    edited = [
+        segment
+        for segment in _segments(data)
+        if isinstance(segment.get("finalized_text"), str)
+        and segment.get("finalized_text") != segment.get("text")
+    ]
+    if edited:
+        lines.extend(["", "## Transcript edits", "| Segment | Original | Displayed |", "| --- | --- | --- |"])
+        for segment in edited:
+            lines.append(
+                f"| {_table_cell(segment.get('id'))} | {_table_cell(segment.get('text'))} "
+                f"| {_table_cell(segment.get('finalized_text'))} |"
+            )
 
     decisions = data.get("operator_decisions")
     if isinstance(decisions, list) and decisions:

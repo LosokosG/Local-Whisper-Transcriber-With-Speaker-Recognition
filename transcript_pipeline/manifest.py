@@ -1011,6 +1011,17 @@ class Manifest:
                     candidate[field].update(dict(value))
             self._touch_and_commit(candidate)
 
+    def replace_inferred_event(self, inferred_event: Mapping[str, Any]) -> None:
+        """Replace (not merge) the resolved event, e.g. clear it on a re-run."""
+
+        if not isinstance(inferred_event, Mapping):
+            raise TypeError("inferred_event must be a mapping")
+        with self._exclusive_lock():
+            self._data = self._load()
+            candidate = copy.deepcopy(self._data)
+            candidate["inferred_event"] = dict(inferred_event)
+            self._touch_and_commit(candidate)
+
     def _touch_and_commit(self, candidate: dict[str, Any]) -> None:
         candidate["updated_at"] = utc_now_iso()
         self._commit(candidate)

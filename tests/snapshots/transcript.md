@@ -2,7 +2,7 @@
 **Date:** Saturday, March 14, 2026
 **Duration:** 00:00:56
 **Speakers:**
-- Ada Example (Host)
+- Ada Example
 - Unidentified Speaker 1
 - Unidentified Speaker 2
 

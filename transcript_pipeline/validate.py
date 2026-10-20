@@ -505,8 +505,8 @@ def _surface_manifest_blockers(
             f"stages.{label}",
             "manifest_blocker",
             f"run has unresolved blocker: {safe_code}",
-            # Downstream blockers never invalidate the evidence they consume.
-            blocking=not (phase == "evidence" and label in {"render", "review"}),
+            # Optional and downstream blockers never invalidate the evidence.
+            blocking=not (phase == "evidence" and label in {"event", "render", "review"}),
         )
 
 
