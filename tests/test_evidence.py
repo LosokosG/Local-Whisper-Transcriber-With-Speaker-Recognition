@@ -174,7 +174,7 @@ def test_quote_must_not_match_inside_a_longer_word(
     )
 
 
-def test_quote_may_match_reviewed_transcript_text(
+def test_quotes_must_match_canonical_text_not_reviewed_edits(
     diarized: dict[str, Any], qa_evidence: dict[str, Any]
 ) -> None:
     diarized["segments"][3]["finalized_text"] = (
@@ -182,7 +182,29 @@ def test_quote_may_match_reviewed_transcript_text(
     )
     _question(qa_evidence, "q-import-duration")["claims"][0]["sources"][0]["quote"] = "a 10 GB archive"
 
-    assert isinstance(validate_qa_evidence(qa_evidence, diarized), dict)
+    assert "quote_not_found" in _codes(
+        validate_qa_evidence(qa_evidence, diarized, raise_on_error=False)
+    )
+
+
+def test_a_name_inserted_by_a_transcript_edit_cannot_bind_a_speaker(
+    diarized: dict[str, Any], speaker_evidence: dict[str, Any]
+) -> None:
+    diarized["segments"][2]["finalized_text"] = "I'm Mallory Invented. How long does the import job take?"
+    guest = _speaker(speaker_evidence, "SPEAKER_01")
+    guest.update(
+        status="identified",
+        confidence="high",
+        display_name="Mallory Invented",
+        output_label="Mallory Invented",
+        binding_evidence=[
+            {"type": "self_identification", "sources": [{"segment_id": "seg-000003", "quote": "I'm Mallory Invented"}]}
+        ],
+    )
+
+    assert {"quote_not_found", "binding_not_definitive"} <= _codes(
+        validate_speaker_evidence(speaker_evidence, diarized, raise_on_error=False)
+    )
 
 
 def test_claims_need_a_verbatim_quote(
@@ -195,14 +217,14 @@ def test_claims_need_a_verbatim_quote(
     )
 
 
-def test_answers_need_a_transcript_segment(
+def test_answers_need_a_quoted_transcript_segment(
     diarized: dict[str, Any], qa_evidence: dict[str, Any]
 ) -> None:
     _question(qa_evidence, "q-import-duration")["answers"][0]["sources"] = [
         {"visual_frame_id": "frame_000040000"}
     ]
 
-    assert "source_required" in _codes(
+    assert "quote_required" in _codes(
         validate_qa_evidence(qa_evidence, diarized, _visual(), raise_on_error=False)
     )
 
@@ -280,11 +302,35 @@ def test_answer_that_ends_before_the_question_is_rejected(
     diarized: dict[str, Any], qa_evidence: dict[str, Any]
 ) -> None:
     question = _question(qa_evidence, "q-import-resume")
-    question["answers"][0]["sources"] = [{"segment_id": "seg-000002"}]
-    question["claims"] = []
+    early = {
+        "text": "An earlier remark.",
+        "answered_by": "SPEAKER_00",
+        "sources": [{"segment_id": "seg-000002", "quote": "first question"}],
+    }
+    # One legitimate answer does not excuse another that precedes the question.
+    question["answers"].append(early)
 
-    assert _codes(validate_qa_evidence(qa_evidence, diarized, raise_on_error=False)) == {
-        "answer_precedes_question"
+    issues = validate_qa_evidence(qa_evidence, diarized, raise_on_error=False)
+
+    assert isinstance(issues, list)
+    assert [(issue["code"], issue["path"]) for issue in issues] == [
+        ("answer_precedes_question", "$.topics[0].questions[1].answers[1].sources")
+    ]
+
+
+def test_numbers_in_claims_and_combined_answers_must_appear_in_quotes(
+    diarized: dict[str, Any], qa_evidence: dict[str, Any]
+) -> None:
+    question = _question(qa_evidence, "q-import-duration")
+    question["claims"][0]["text"] = "About 400 minutes on 12 workers"
+    question["combined_answer"] = "It takes about 45 minutes."
+
+    issues = validate_qa_evidence(qa_evidence, diarized, raise_on_error=False)
+
+    assert isinstance(issues, list)
+    assert {issue["path"]: issue["code"] for issue in issues} == {
+        "$.topics[0].questions[0].claims[0].text": "number_not_quoted",
+        "$.topics[0].questions[0].combined_answer": "number_not_quoted",
     }
 
 
@@ -340,6 +386,67 @@ def test_supporting_bindings_alone_cannot_publish_a_name(
 ) -> None:
     _speaker(speaker_evidence, "SPEAKER_00")["binding_evidence"][0]["type"] = binding_type
 
+    assert "binding_not_definitive" in _codes(
+        validate_speaker_evidence(speaker_evidence, diarized, raise_on_error=False)
+    )
+
+
+def test_a_mention_in_the_speakers_own_turn_is_not_an_introduction(
+    diarized: dict[str, Any], speaker_evidence: dict[str, Any]
+) -> None:
+    diarized["segments"][2]["text"] = "Bo Sample asked me to read this: how long does the import job take?"
+    guest = _speaker(speaker_evidence, "SPEAKER_01")
+    guest.update(
+        status="identified",
+        confidence="high",
+        display_name="Bo Sample",
+        output_label="Bo Sample",
+        binding_evidence=[
+            {
+                "type": "introduced_by_other",
+                "sources": [
+                    {"segment_id": "seg-000003", "quote": "Bo Sample asked me"},
+                    {"segment_id": "seg-000005"},
+                ],
+            }
+        ],
+    )
+
+    assert "binding_not_definitive" in _codes(
+        validate_speaker_evidence(speaker_evidence, diarized, raise_on_error=False)
+    )
+
+
+def test_introduction_must_be_followed_directly_by_the_named_speaker(
+    diarized: dict[str, Any], speaker_evidence: dict[str, Any]
+) -> None:
+    diarized["segments"][0]["text"] = "Welcome everyone, our guest Bo Sample joins later."
+    _speaker(speaker_evidence, "SPEAKER_00").update(
+        status="unidentified", display_name=None, output_label="Unidentified Speaker 3",
+        confidence="low", binding_evidence=[],
+    )
+    guest = _speaker(speaker_evidence, "SPEAKER_01")
+    guest.update(
+        status="identified",
+        confidence="high",
+        display_name="Bo Sample",
+        output_label="Bo Sample",
+        binding_evidence=[
+            {
+                "type": "introduced_by_other",
+                "sources": [
+                    {"segment_id": "seg-000001", "quote": "our guest Bo Sample"},
+                    {"segment_id": "seg-000003"},
+                ],
+            }
+        ],
+    )
+
+    # seg-000002 (same host) does not break the turn, so seg-000003 is next: accepted.
+    assert isinstance(validate_speaker_evidence(speaker_evidence, diarized), dict)
+
+    # A different speaker answering first means the mention did not hand over.
+    diarized["segments"][1]["speaker"] = "SPEAKER_02"
     assert "binding_not_definitive" in _codes(
         validate_speaker_evidence(speaker_evidence, diarized, raise_on_error=False)
     )

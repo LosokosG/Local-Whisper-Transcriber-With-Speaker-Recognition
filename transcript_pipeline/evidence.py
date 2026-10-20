@@ -121,6 +121,15 @@ def _contains_phrase(haystack: str, needle: str) -> bool:
     return f" {normalized_needle} " in f" {normalize_text(haystack)} "
 
 
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _numbers(value: str) -> set[str]:
+    """Digit groups in text, with thousands separators removed."""
+
+    return {match.replace(",", "") for match in _NUMBER.findall(unicodedata.normalize("NFKC", value))}
+
+
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
     return {"path": path, "code": code, "message": message}
 
@@ -240,12 +249,25 @@ class _SourceIndex:
         return start, end
 
     def segment_texts(self, segment_id: str) -> tuple[str, ...]:
-        segment = self.segments.get(segment_id, {})
-        return tuple(
-            text
-            for key in ("text", "finalized_text")
-            if isinstance((text := segment.get(key)), str) and text
-        )
+        # Quotes are checked against the canonical ASR text only. Reviewed
+        # edits change what is displayed, never what counts as evidence.
+        text = self.segments.get(segment_id, {}).get("text")
+        return (text,) if isinstance(text, str) and text else ()
+
+    def next_turn_after(self, segment_id: str) -> str | None:
+        """Return the first later segment spoken by someone else."""
+
+        speaker = self.segment_speaker(segment_id)
+        identifiers = list(self.segments)
+        try:
+            position = identifiers.index(segment_id)
+        except ValueError:
+            return None
+        for candidate in identifiers[position + 1 :]:
+            other = self.segment_speaker(candidate)
+            if other is not None and other != speaker:
+                return candidate
+        return None
 
     def reference_time(self, reference: Mapping[str, Any]) -> float | None:
         segment_id = reference.get("segment_id")
@@ -466,25 +488,20 @@ def _introduction_holds(
     name: str,
     index: _SourceIndex,
 ) -> bool:
-    introductions = [
-        bounds
-        for segment_id, quote in _verified_quotes(references, index)
-        if _contains_phrase(quote, name)
-        and (bounds := index.segment_bounds(segment_id)) is not None
-    ]
-    own_turns = [
-        bounds
-        for segment_id in _segment_ids(references)
-        if index.segment_speaker(segment_id) == speaker
-        and (bounds := index.segment_bounds(segment_id)) is not None
-    ]
-    return any(
-        intro_end - SPEAKER_ALIGNMENT_TOLERANCE_SECONDS
-        <= turn_start
-        <= intro_end + INTRODUCTION_WINDOW_SECONDS
-        for _intro_start, intro_end in introductions
-        for turn_start, _turn_end in own_turns
-    )
+    cited = set(_segment_ids(references))
+    for segment_id, quote in _verified_quotes(references, index):
+        introducer = index.segment_speaker(segment_id)
+        if introducer is None or introducer == speaker or not _contains_phrase(quote, name):
+            continue
+        # The named person must take the very next turn, and must be cited.
+        answer = index.next_turn_after(segment_id)
+        if answer is None or answer not in cited or index.segment_speaker(answer) != speaker:
+            continue
+        intro = index.segment_bounds(segment_id)
+        turn = index.segment_bounds(answer)
+        if intro is not None and turn is not None and turn[0] <= intro[1] + INTRODUCTION_WINDOW_SECONDS:
+            return True
+    return False
 
 
 def _speaking_indicator_holds(
@@ -753,26 +770,43 @@ def _qa_semantic_issues(
             speaker_issue(f"{base}.asked_by", question.get("asked_by"), asked_sources)
 
             answers = _mapping_sequence(question.get("answers"))
-            answer_ends: list[float] = []
+            asked_times = [
+                time
+                for reference in asked_sources
+                if (time := index.reference_time(reference)) is not None
+            ]
+            quoted_numbers: set[str] = set()
             for answer_index, answer in enumerate(answers):
                 answer_base = f"{base}.answers[{answer_index}]"
                 answer_sources = _mapping_sequence(answer.get("sources"))
                 issues.extend(_reference_issues(answer_sources, f"{answer_base}.sources", index))
                 segment_ids = _segment_ids(answer_sources)
-                if not segment_ids:
+                if not any(isinstance(reference.get("quote"), str) for reference in answer_sources if reference.get("segment_id")):
                     issues.append(
                         _issue(
                             f"{answer_base}.sources",
-                            "source_required",
-                            "an answer must cite at least one transcript segment",
+                            "quote_required",
+                            "an answer must cite a transcript segment with a verbatim quote",
                         )
                     )
                 speaker_issue(f"{answer_base}.answered_by", answer.get("answered_by"), answer_sources)
-                answer_ends.extend(
+                for _segment_id, quote in _verified_quotes(answer_sources, index):
+                    quoted_numbers.update(_numbers(quote))
+                answer_ends = [
                     bounds[1]
                     for segment_id in segment_ids
                     if (bounds := index.segment_bounds(segment_id)) is not None
-                )
+                ]
+                if asked_times and answer_ends and max(answer_ends) < (
+                    min(asked_times) - ANSWER_ORDER_TOLERANCE_SECONDS
+                ):
+                    issues.append(
+                        _issue(
+                            f"{answer_base}.sources",
+                            "answer_precedes_question",
+                            "the cited answer ends before the question was asked",
+                        )
+                    )
 
             for claim_index, claim in enumerate(_mapping_sequence(question.get("claims"))):
                 claim_base = f"{base}.claims[{claim_index}]"
@@ -788,6 +822,20 @@ def _qa_semantic_issues(
                             f"{claim_base}.sources",
                             "quote_required",
                             "a claim must cite a transcript segment with a verbatim quote",
+                        )
+                    )
+                claim_numbers: set[str] = set()
+                for _segment_id, quote in _verified_quotes(claim_sources, index):
+                    claim_numbers.update(_numbers(quote))
+                quoted_numbers.update(claim_numbers)
+                text = claim.get("text")
+                missing = sorted(_numbers(text) - claim_numbers) if isinstance(text, str) else []
+                if missing:
+                    issues.append(
+                        _issue(
+                            f"{claim_base}.text",
+                            "number_not_quoted",
+                            f"claim number(s) {', '.join(missing)} do not appear in its quotes",
                         )
                     )
 
@@ -821,21 +869,16 @@ def _qa_semantic_issues(
                         )
                     )
 
-            asked_times = [
-                time
-                for reference in asked_sources
-                if (time := index.reference_time(reference)) is not None
-            ]
-            if asked_times and answer_ends and max(answer_ends) < (
-                min(asked_times) - ANSWER_ORDER_TOLERANCE_SECONDS
-            ):
-                issues.append(
-                    _issue(
-                        f"{base}.answers",
-                        "answer_precedes_question",
-                        "every cited answer segment ends before the question was asked",
+            if isinstance(combined, str):
+                missing = sorted(_numbers(combined) - quoted_numbers)
+                if missing:
+                    issues.append(
+                        _issue(
+                            f"{base}.combined_answer",
+                            "number_not_quoted",
+                            f"combined answer number(s) {', '.join(missing)} appear in no answer or claim quote",
+                        )
                     )
-                )
     return issues
 
 
