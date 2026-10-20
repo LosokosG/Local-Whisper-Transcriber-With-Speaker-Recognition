@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "topics": [
+    {
+      "id": "import",
+      "title": "Import jobs",
+      "questions": [
+        {
+          "id": "q-import-duration",
+          "question": "How long does the import job take for a large archive?",
+          "asked_by": "SPEAKER_01",
+          "asked_sources": [{"segment_id": "seg-000003", "quote": "How long does the import job take"}],
+          "answers": [
+            {
+              "text": "A ten gigabyte archive usually takes about 40 minutes on one worker.",
+              "answered_by": "SPEAKER_00",
+              "sources": [{"segment_id": "seg-000004", "quote": "it usually finishes in about 40 minutes on one worker"}]
+            }
+          ],
+          "combined_answer": "A ten gigabyte archive usually finishes in **about 40 minutes** on one worker.",
+          "status": "answered",
+          "claims": [
+            {
+              "kind": "number",
+              "text": "About 40 minutes for a ten gigabyte archive on one worker",
+              "sources": [{"segment_id": "seg-000004", "quote": "about 40 minutes on one worker"}]
+            }
+          ]
+        },
+        {
+          "id": "q-import-resume",
+          "question": "Does the import resume after a crash?",
+          "asked_by": "SPEAKER_01",
+          "asked_sources": [{"segment_id": "seg-000005"}],
+          "answers": [
+            {
+              "text": "Yes; every stage writes a checkpoint.",
+              "answered_by": "SPEAKER_00",
+              "sources": [{"segment_id": "seg-000006", "quote": "every stage writes a checkpoint"}]
+            }
+          ],
+          "combined_answer": "Yes. Every stage writes a checkpoint, so it resumes where it stopped.",
+          "status": "answered",
+          "claims": [
+            {
+              "kind": "commitment",
+              "text": "Every stage writes a checkpoint",
+              "sources": [{"segment_id": "seg-000006", "quote": "every stage writes a checkpoint"}]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "roadmap",
+      "title": "Roadmap",
+      "questions": [
+        {
+          "id": "q-mobile",
+          "question": "Will there be a mobile version next year?",
+          "asked_by": "SPEAKER_02",
+          "asked_sources": [{"segment_id": "seg-000007"}],
+          "answers": [],
+          "combined_answer": null,
+          "status": "unanswered",
+          "claims": []
+        }
+      ]
+    }
+  ]
+}

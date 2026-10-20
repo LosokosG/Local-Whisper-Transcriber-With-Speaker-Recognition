@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:transcript-pipeline:qa-evidence:1",
+  "title": "Question and answer evidence",
+  "description": "Questions, answers, and checkable claims proposed by an agent or a human. Every answer and claim must cite transcript segments; quotes must occur verbatim (after whitespace, case, and punctuation normalization) in the cited segment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "topics"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "topics": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/topic"}
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "speaker_label": {
+      "type": "string",
+      "pattern": "^SPEAKER_[A-Za-z0-9_-]+$"
+    },
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": {"type": "string", "pattern": "^seg-[0-9]{6}$"},
+        "quote": {"type": "string", "minLength": 1, "maxLength": 500},
+        "visual_frame_id": {"type": "string", "minLength": 1, "maxLength": 240},
+        "visual_observation_id": {"type": "string", "minLength": 1, "maxLength": 240}
+      },
+      "anyOf": [
+        {"required": ["segment_id"]},
+        {"required": ["visual_frame_id"]},
+        {"required": ["visual_observation_id"]}
+      ],
+      "dependentRequired": {"quote": ["segment_id"]}
+    },
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "sources"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "answered_by": {
+          "oneOf": [{"$ref": "#/$defs/speaker_label"}, {"type": "null"}]
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/source_ref"}
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "text", "sources"],
+      "properties": {
+        "kind": {
+          "enum": ["name", "date", "number", "price", "commitment", "other"]
+        },
+        "text": {"type": "string", "minLength": 1},
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/source_ref"}
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question",
+        "asked_sources",
+        "answers",
+        "combined_answer",
+        "status",
+        "claims"
+      ],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "question": {"type": "string", "minLength": 1},
+        "asked_by": {
+          "oneOf": [{"$ref": "#/$defs/speaker_label"}, {"type": "null"}]
+        },
+        "asked_sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/source_ref"}
+        },
+        "answers": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/answer"}
+        },
+        "combined_answer": {
+          "oneOf": [{"type": "string", "minLength": 1}, {"type": "null"}]
+        },
+        "status": {"enum": ["answered", "partially_answered", "unanswered"]},
+        "claims": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/claim"}
+        }
+      }
+    },
+    "topic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "questions"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "title": {"type": "string", "minLength": 1},
+        "questions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/question"}
+        }
+      }
+    }
+  }
+}

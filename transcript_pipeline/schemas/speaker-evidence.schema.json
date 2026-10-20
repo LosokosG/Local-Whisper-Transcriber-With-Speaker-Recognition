@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:transcript-pipeline:speaker-evidence:1",
+  "title": "Speaker naming evidence",
+  "description": "Maps each diarized speaker label to a public name or to 'Unidentified Speaker N'. A name is published only for status=identified, which the validator accepts only when a definitive binding can be re-derived from the cited transcript segments or frame observations, or when an operator confirmed the name through the CLI (recorded in the run manifest).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "speakers"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "speakers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/speaker"}
+    }
+  },
+  "$defs": {
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": {"type": "string", "pattern": "^seg-[0-9]{6}$"},
+        "quote": {"type": "string", "minLength": 1, "maxLength": 500},
+        "visual_frame_id": {"type": "string", "minLength": 1, "maxLength": 240},
+        "visual_observation_id": {"type": "string", "minLength": 1, "maxLength": 240}
+      },
+      "anyOf": [
+        {"required": ["segment_id"]},
+        {"required": ["visual_frame_id"]},
+        {"required": ["visual_observation_id"]}
+      ],
+      "dependentRequired": {"quote": ["segment_id"]}
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sources"],
+      "properties": {
+        "type": {
+          "enum": [
+            "self_identification",
+            "introduced_by_other",
+            "visible_speaking_indicator",
+            "visible_name_label",
+            "ocr_visible_name",
+            "verbal_mention",
+            "timing_correlation",
+            "voice_cluster_propagation",
+            "operator_confirmation"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/source_ref"}
+        },
+        "note": {"type": "string", "minLength": 1, "maxLength": 500}
+      }
+    },
+    "speaker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "speaker_label",
+        "status",
+        "output_label",
+        "display_name",
+        "confidence",
+        "binding_evidence",
+        "contradictions"
+      ],
+      "properties": {
+        "speaker_label": {"type": "string", "pattern": "^SPEAKER_[A-Za-z0-9_-]+$"},
+        "status": {"enum": ["identified", "unidentified", "manual_review"]},
+        "output_label": {"type": "string", "minLength": 1, "maxLength": 200},
+        "display_name": {
+          "oneOf": [
+            {"type": "string", "minLength": 1, "maxLength": 200},
+            {"type": "null"}
+          ]
+        },
+        "role": {"type": "string", "minLength": 1, "maxLength": 200},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "binding_evidence": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/binding"}
+        },
+        "contradictions": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    }
+  }
+}

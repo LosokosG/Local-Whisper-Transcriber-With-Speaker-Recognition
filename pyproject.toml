@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "transcript-pipeline"
+version = "0.2.0"
+description = "Local, resumable pipeline: recording to speaker-attributed transcript to evidence-checked Q&A."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Mateusz Macutkiewicz" }]
+requires-python = ">=3.12,<3.13"
+# The core install is deliberately light: everything except the actual
+# transcription model runs (and is tested) without a GPU or model downloads.
+dependencies = [
+    "jsonschema>=4.23",
+    "Pillow>=11",
+]
+
+[project.optional-dependencies]
+# Real transcription and diarization: pulls torch, faster-whisper and
+# pyannote.audio. Needs an NVIDIA GPU for practical speed.
+ml = [
+    "whisperx>=3.8",
+]
+test = [
+    "pytest>=8",
+]
+
+[project.scripts]
+transcript-pipeline = "transcript_pipeline.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["transcript_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

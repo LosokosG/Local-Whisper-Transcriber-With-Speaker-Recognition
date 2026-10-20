@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:transcript-pipeline:event-evidence:1",
+  "title": "Recording event-time evidence",
+  "description": "Independent evidence used to infer a recording's UTC event time.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "recording_duration_seconds",
+    "signals"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "recording_duration_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "signals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/signal"
+      }
+    }
+  },
+  "$defs": {
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "candidate_start_utc",
+        "source",
+        "detail",
+        "strength",
+        "independent_group",
+        "authoritative"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "kind": {
+          "enum": [
+            "media_creation_time",
+            "visible_ui",
+            "spoken_date",
+            "user_override"
+          ]
+        },
+        "candidate_start_utc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(?:Z|[+]00:00)$"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "independent_group": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "authoritative": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["authoritative"],
+            "properties": {
+              "authoritative": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "user_override"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "const": "user_override"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "authoritative": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

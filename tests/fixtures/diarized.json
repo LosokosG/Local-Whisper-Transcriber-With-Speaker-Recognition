@@ -1,0 +1,29 @@
+{
+  "diarization_available": true,
+  "language": "en",
+  "model": {
+    "batch_size": 8,
+    "compute_type": "int8",
+    "device": "cpu",
+    "language": null,
+    "max_speakers": null,
+    "min_speakers": null,
+    "name": "large-v3-turbo",
+    "num_speakers": null
+  },
+  "processing": {
+    "alignment": {"code": null, "error": null, "status": "completed"},
+    "diarization": {"code": null, "error": null, "status": "completed"}
+  },
+  "speaker_recognition": {"code": null, "reason": null, "status": "completed"},
+  "segments": [
+    {"id": "seg-000001", "start": 0.0, "end": 6.0, "speaker": "SPEAKER_00", "text": "Welcome everyone, I'm Ada Example and I'll host today's session."},
+    {"id": "seg-000002", "start": 6.0, "end": 12.0, "speaker": "SPEAKER_00", "text": "Let's start with the first question from the audience."},
+    {"id": "seg-000003", "start": 12.5, "end": 18.0, "speaker": "SPEAKER_01", "text": "How long does the import job take for a large archive?"},
+    {"id": "seg-000004", "start": 18.5, "end": 30.0, "speaker": "SPEAKER_00", "text": "For a ten gigabyte archive it usually finishes in about 40 minutes on one worker."},
+    {"id": "seg-000005", "start": 30.5, "end": 34.0, "speaker": "SPEAKER_01", "text": "And does it resume after a crash?"},
+    {"id": "seg-000006", "start": 34.5, "end": 44.0, "speaker": "SPEAKER_00", "text": "Yes, every stage writes a checkpoint, so it resumes where it stopped."},
+    {"id": "seg-000007", "start": 45.0, "end": 50.0, "speaker": "SPEAKER_02", "text": "Will there be a mobile version next year?"},
+    {"id": "seg-000008", "start": 50.5, "end": 56.0, "speaker": "SPEAKER_00", "text": "Thanks everyone, that's all the time we have."}
+  ]
+}

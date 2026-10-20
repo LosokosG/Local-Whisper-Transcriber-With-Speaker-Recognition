@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "speakers": [
+    {
+      "speaker_label": "SPEAKER_00",
+      "status": "identified",
+      "output_label": "Ada Example",
+      "display_name": "Ada Example",
+      "role": "Host",
+      "confidence": "high",
+      "binding_evidence": [
+        {
+          "type": "self_identification",
+          "sources": [{"segment_id": "seg-000001", "quote": "I'm Ada Example and I'll host"}]
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "speaker_label": "SPEAKER_01",
+      "status": "unidentified",
+      "output_label": "Unidentified Speaker 1",
+      "display_name": null,
+      "confidence": "low",
+      "binding_evidence": [],
+      "contradictions": []
+    },
+    {
+      "speaker_label": "SPEAKER_02",
+      "status": "unidentified",
+      "output_label": "Unidentified Speaker 2",
+      "display_name": null,
+      "confidence": "low",
+      "binding_evidence": [],
+      "contradictions": []
+    }
+  ]
+}
