@@ -356,13 +356,21 @@ def _validate_canonical_metadata(metadata: MediaMetadata) -> None:
         raise _error("canonical FLAC is not mono", audio["channels"])
 
 
-def _verify_complete_decode(path: Path) -> None:
+# A decode may stop short of the duration in the FLAC header by less than one
+# block; a truncated file loses whole blocks (~0.25 s each at 16 kHz).
+DECODE_SHORTFALL_TOLERANCE_SECONDS = 0.1
+
+
+def _verify_complete_decode(path: Path, expected_seconds: float) -> None:
     command = [
         "ffmpeg",
         "-nostdin",
         "-v",
         "error",
         "-xerror",
+        "-progress",
+        "pipe:1",
+        "-nostats",
         "-i",
         str(path),
         "-f",
@@ -373,15 +381,37 @@ def _verify_complete_decode(path: Path) -> None:
         completed = subprocess.run(
             command,
             check=False,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             shell=False,
         )
     except OSError as exc:
         raise _error("could not start canonical FLAC decoder", exc) from exc
-    if completed.returncode != 0:
+    # ffmpeg 6.x reports a truncated frame on stderr but still exits 0, so the
+    # exit code alone is not enough.
+    if completed.returncode != 0 or completed.stderr.strip():
         raise _error("canonical FLAC decode failed", completed.stderr)
+    decoded_seconds = _decoded_seconds(completed.stdout)
+    if decoded_seconds is None:
+        raise _error("canonical FLAC decode failed: no progress report from ffmpeg")
+    if decoded_seconds < expected_seconds - DECODE_SHORTFALL_TOLERANCE_SECONDS:
+        raise _error(
+            "canonical FLAC decode failed: decoded "
+            f"{decoded_seconds:.3f}s of {expected_seconds:.3f}s"
+        )
+
+
+def _decoded_seconds(progress: str | None) -> float | None:
+    last: float | None = None
+    for line in (progress or "").splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() == "out_time_us":
+            try:
+                last = int(value.strip()) / 1_000_000
+            except ValueError:
+                continue
+    return last
 
 
 def validate_canonical_flac(
@@ -392,7 +422,7 @@ def validate_canonical_flac(
     artifact_path = Path(path)
     metadata = probe_media(artifact_path)
     _validate_canonical_metadata(metadata)
-    _verify_complete_decode(artifact_path)
+    _verify_complete_decode(artifact_path, _audio_duration(metadata, "canonical FLAC"))
     return metadata
 
 

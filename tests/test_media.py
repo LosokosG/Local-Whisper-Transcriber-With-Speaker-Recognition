@@ -376,6 +376,9 @@ def test_validate_canonical_flac_fully_decodes_without_mutating_input(
                 "-v",
                 "error",
                 "-xerror",
+                "-progress",
+                "pipe:1",
+                "-nostats",
                 "-i",
                 str(corrupt_flac),
                 "-f",
@@ -384,7 +387,7 @@ def test_validate_canonical_flac_fully_decodes_without_mutating_input(
             ],
             {
                 "check": False,
-                "stdout": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
                 "stderr": subprocess.PIPE,
                 "text": True,
                 "shell": False,
@@ -613,3 +616,43 @@ def test_sha256_file_hashes_large_file_in_bounded_chunks(
     assert requested_read_sizes
     assert all(0 < size <= 1024 * 1024 for size in requested_read_sizes)
     assert len(requested_read_sizes) >= 2
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "stderr", "message"),
+    [
+        (0, "out_time_us=1088000\nprogress=end\n", "", "decoded 1.088s of 2.000s"),
+        (0, "out_time_us=1984000\nprogress=end\n", "Invalid data found", "decode failed"),
+        (0, "progress=end\n", "", "no progress report"),
+        (1, "out_time_us=2000000\n", "", "decode failed"),
+    ],
+)
+def test_decode_check_does_not_trust_exit_code_alone(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    returncode: int,
+    stdout: str,
+    stderr: str,
+    message: str,
+) -> None:
+    import transcript_pipeline.media as media
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(media.subprocess, "run", fake_run)
+    with pytest.raises(media.MediaError, match=message):
+        media._verify_complete_decode(tmp_path / "audio.flac", 2.0)
+
+
+def test_decode_check_accepts_last_block_rounding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import transcript_pipeline.media as media
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        progress = "out_time_us=1000000\nprogress=continue\nout_time_us=1984000\nprogress=end\n"
+        return subprocess.CompletedProcess(command, 0, stdout=progress, stderr="")
+
+    monkeypatch.setattr(media.subprocess, "run", fake_run)
+    media._verify_complete_decode(tmp_path / "audio.flac", 2.0)
